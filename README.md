@@ -2,9 +2,11 @@
 
 This package implements methods described in [Machine-Learning Tests for Effects on Multiple Outcomes](https://arxiv.org/pdf/1707.01473.pdf) by Ludwig, Mullainathan, and Spiess (w.p.).
 
+`moxie` is an experimental package, so please carefully interrogate results rather than treating them as true. While we've tested the package, there may be bugs we have yet to find.
+
 ## Install
 
-`moxie` currently depends on the helper package `learners`, which is available on [GitHub](https://github.com/adviksh/learners). You'll need to install `learners` before `moxie` will work.
+`moxie` depends on the helper package `learners`, which is available on [GitHub](https://github.com/adviksh/learners). You'll need to install `learners` before `moxie` will work.
 
 ### Option 1: R
 Make sure you have an up-to-date version of the `devtools` package. Then, open an R session and run the following commands:
