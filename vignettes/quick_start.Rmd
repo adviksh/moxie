@@ -1,0 +1,140 @@
+---
+title: "Quick Start"
+author: "Advik Shreekumar"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Vignette Title}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+
+This package implements machine-learning methods for causal inference. You can use this package without diving deeply into the statistics or software, but for reference I recommend:
+
+* [Machine Learning Tests for Effects on Multiple Outcomes](arxiv.org/abs/1707.01473) to explain the methods used in this package.
+
+## The Basics
+Let's say we've run a randomized experiment, and have collected the following information about units in the study: baseline covariates $X$, treatment assignment $T$, and outcomes $Y$. We're interested in whether the treatment has an effect on the outcomes. Let's also say we have a learner $L$, which is any predictive model that uses features (inputs) to predict the value of a target (output). Learners can have a flexible structure, determined by a combination of high-level hyperparameters and low-level parameters. We _tune_ the learner to choose values for hyperparameters, and we _train_ the learner to choose values for the parameters.
+
+This package is built on the following observations:
+
+* In a randomized experiment, if $T$ affects $Y$ we should be able to use observations' treatment status to predict their outcomes. For example, if tutoring raises test scores, I should be able to predict that tutored students will have higher scores than untutored students. By the same argument, I should be able to predict that students with higher scores were more likely to be tutored.
+* You can answer experimental questions by analyzing the performance of one learner. For example, if a learner can use baseline covariates $X$ to make good prediction about treatment assignment $T$, this is evidence that there is imbalance in the covariates.
+* You can answer experimental questions by comparing the performance of one learner on two different feature sets. For example, if a learner that uses a combination of $(X,Y)$ can form better predictions about $T$ than the same type of learner using only $X$, then there is information in $Y$ about $T$ conditioned on $X$, giving evidence of a treatment effect.
+* You can measure the performance of any learner using a permutation test. We can use our learner to form predictions $\hat{T}$, and then measure how well these recreate the true value $T$. Then, we can randomly permute $T$ and measure how well $\hat{T}$ recreates $T_{perm}$. If $\hat{T}$ is closer to $T_{perm}$ than to $T$, the learner has likely measured a spurious relationship. To make this measurement more reliable, we can repeatedly permute $T$ and calculate how often $\hat{T}$ is closer to $T_{perm}$ than to $T$. This proportion is the permutation test p-value.
+* You can use sample-splitting to save computation time. Any performance measures taken in the data used in tuning or training is likely to be optimistic. Adjusting for this optimism is computationally expensive and not currently implemented. Instead, we can use different subsets of the data to (1) tune and train a learner, and (2) assess its performance. 
+
+
+## Analyzing an Experiment
+Let's simulate data from an experiment with 1,000 observations where we flip a coin to assign units to treatment. We'll include 3 baseline covariates and 4 outcomes, all continuous. We'll simulate a variate of linear, nonlinear, and heterogeneous treatment effects. The treatment will have no effect on the first outcome and an effect of +1 on the mean of the second outcome.
+```{r, message=FALSE}
+library(moxie)
+set.seed(1)
+
+# Generate data
+n   <- 1000
+k_x <- 3
+
+x   <- matrix(rnorm(n * k_x), n, k_x)
+
+tmt <- rbinom(n, size = 1, prob = 0.5)
+
+y   <- cbind(rnorm(n),
+             rnorm(n, mean = 1 * tmt))
+```
+
+First, we might be concerned about whether our treatment and  control groups are imbalanced on the covariates. We'd conventionally perform this test by calculating a difference in means between the treatment and control groups for each outcome, and could perform an omnibus F-test to combine results across all covariates. To use a prediction-driven approach, we can see if a logistic regression using $X$ can recover information about $T$. Formally, the hypotheses are:
+
+* H0: There is no linear difference in $X$ between the treatment and control groups.
+* H1: There is a linear difference in $X$ between the treatment and control groups.
+
+We could test for more complex forms of imbalance by using a different learner, like a tree-based model or an ensemble. In any case, we analyze whether a single set of features carries information about the outcomes with the function `analyze_feature_set`:
+
+```{r, message=FALSE}
+balance_test <- analyze_features(features = x,
+                                 tmt = tmt,
+                                 learner = binary_logistic,
+                                 permutations = 2)
+```
+
+The output is a list with several slots. See help("analyze_features") for details about all its entries. For now, we can inspect the `perm_test` slot to find the p-value for this hypothesis test.
+```{r}
+balance_test$perm_test
+```
+Notice that although we requested 2 permutations, the `permuted_loss` slot contains three values. This is because `moxie` creates the permutes the treatment vector the requested number of times, and then adds the observed treatment vector if it's not already part of the permutations.
+
+## Comparing Feature Sets
+After testing for balance we might wonder whether the treatment has an effect on the outcomes, accounting for any imbalance that might exist. Conventionally we could perform this analysis with a multiple regression that includes terms for our covariates of interest. To use a prediction-driven approach, we predict $T$ twice: first with $X$ alone and then with $X$ and $Y$ together. If adding $Y$ to the feature set improves predictions, there's an effect of $T$ on $Y$. If we use a logistic regression, our hypotheses are:
+
+* H0: There is no linear effect of $T$ on $Y$ given $X$.
+* H1: There is a linear effect of $T$ on $Y$ given $X$.
+
+Again, we could test for nonlinear treatment effects by using a different learner. 
+
+The function `analyze_features` also lets us compare a list of different feature sets. To do so, we pass a named list of matrices to for `x`:
+
+```{r}
+feature_sets <- list(balance = x,
+                     signal  = cbind(x,y))
+                     
+signal_test <- analyze_features(features = feature_sets,
+                                tmt = tmt,
+                                learner = binary_logistic,
+                                permutations = 2)
+
+signal_test$comparison[,c("feature_set_a", "feature_set_b", "observed_loss_a", "observed_loss_b", "p_val")]
+```
+
+The output is structured similarly to `analyze_feature_set`, but now has a `comparison` slot that compares goodness of fit for every combination of two feature sets. It includes redundant comparisons (ex: A vs B and B vs A). The first row compares the `r signal_test$comparison$feature_set_a[1]` features to the `r signal_test$comparison$feature_set_a[2]` features, showing that the `r signal_test$comparison$feature_set_a[1]` features earn a better RMSE by `r round(signal_test$comparison$observed_a_minus_b[1],2)`. The p-value for this comparison is `r signal_test$comparison$p_val[1]`. 
+
+## Complex Randomization
+For the permutation test to be valid, every permutation must be hypothetically possible given a study's treatment assignment mechanism. In an experiment where treatment is assigned to units at the individual level, every permutation is valid. 
+
+In some cases we assign treatment to multiple units together. For example, in an educational setting we may assign an experimental curriculum at the classroom level but measure outcomes at the student level. In this case, treatment is assigned by a clustering variable (classroom), and the treatment vector needs to be permuted so that all students in the same classroom share the same treatment status within a given permutation. To enforce this constraint, use the `cluster_var` argument to pass the name of the column identifying which cluster each observation belongs to.
+
+In some cases we assign treatment randomly within subsets of observations. For example, in an educational setting we may identify pairs of students with similar academic records, and assign one student to receive experimental tutoring while the other receives conventional tutoring. In this case, treatment is assigned within a block (student pair), and the treatment vector needs to be permuted block by block, so that treatment status can only move between units in the same block. To enforce this constraint, use the `block_var` argument to pass the name of the column identifying which cluster each observation belongs to.
+
+If treatment status is assigned by both block and cluster, pass both arguments. This would happen, for example, if a set of classrooms were divided into pairs, an experimental curriculum were given to one classroom in each pair, and outcomes were measured at the student level.
+
+## Summarizing Model Structure
+After fitting a model, you'll want a basic understanding of what aspects of the features the model is focusing on. One way to explore a fitted model is to take the gradient of the outcome with respect to the predictions. Let's quickly look at what this means.
+
+Suppose you have a single outcome and a binary treatment, `y` and `tmt`, respectively. One estimator of the causal effect is the difference in mean outcomes between the treatment and control group: `weighted.mean(y, tmt) - weighted.mean(y, 1 - tmt)`. Purely mathematically, this expression measures how much separation there is in the outcome based on treatment assignment. Given some assumptions about experimental design, we can interpret this estimator as a causal effect.
+
+Now, suppose we replace the observed vector `tmt` with a vector of predictions `tmt_hat`, where entries of `tmt_hat` are between 0 and 1. Then, the expression `weighted.mean(y, tmt_hat) - weighted.mean(y, 1 - tmt_hat)` measures how much separation there is in the outcome based on predicted treatment status. Put another way, it can identify outcomes that the model registers as being different between the treatment and control group. We _do not_ interpret this causally, because `tmt_hat` is a fiction produced by our model. It's not a part of the randomized experiment.
+
+We can do this for more than just the difference in means between the two groups. For example, if we defined a function to calculate a weighted standard deviation, we could also calculate `weighted.sd(y, tmt_hat) - weighted.sd(y, 1 - tmt_hat)` to measure whether the outcomes have a different spread at high values of `tmt_hat` compared ot low values.
+
+If you provide a matrix of outcomes to `analyze_features()` with the `y = ` argument, the output will include a slot called `tmt_hat_struct` that estimates the above quantities:
+```{r}
+# suppose there are two outcomes, with no treatment effect on the first, and
+# an average treatment effect of +1 on the second
+y   <- cbind(rnorm(n),
+             rnorm(n, mean = 1 * tmt))
+                     
+signal_test <- analyze_features(features = cbind(x,y),
+                                tmt = tmt,
+                                learner = binary_logistic,
+                                y = y)
+
+signal_test$tmt_hat_struct
+```
+
+`tmt_hat_struct` is a dataframe. Each row summarizes one out come in one of the treatment groups. The columns are:
+
+* outcome_name: the name of the outcome described in this row. If `y` had no column names, these will be default names, one per column of `y`.
+* treatment_group: the name of the treatment group described in this row.
+* group_mean: the model-based mean in this treatment group, calculated as `weighted.mean(y, tmt == treatment_group)`
+* group_sd: the model-based standard deviation in this treatment group, calculated as `weighted.sd(y, tmt == treatment_group)`
+* control_mean: the model-based control group mean, calculated as `weighted.mean(y, tmt == 0)`
+* control_sd: the model-based control group standard deviation, calculated as `weighted.sd(y, tmt == 0)`
+* delta_mean: the model-based difference in means between treatment and control group, calculated as `weighted.mean(y, tmt == treatment_group) - weighted.mean(y, tmt == 0)`
+* delta_sd: the model-based difference in standard deviations between treatment and control group, calculated as `weighted.sd(y, tmt == treatment_group) - weighted.sd(y, tmt == 0)`.

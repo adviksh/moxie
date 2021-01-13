@@ -1,0 +1,71 @@
+---
+title: "P-Values Under the Null Hypothesis"
+author: "Vignette Author"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+%\VignetteIndexEntry{Vignette Title}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+  
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+collapse = TRUE,
+comment = "#>"
+)
+```
+
+If we simulate data under the null hypothesis, p-values ought to be uniformly distributed:
+```{r, message=FALSE, warning=FALSE}
+library(moxie)
+library(ggplot2)
+n_obs <- 1000
+```
+
+```{r}
+p_values_ho <- sapply(1:100,
+                      function(x){
+                        analyze_features(random_seed = x,
+                                         features = matrix(rnorm(n_obs * 3),
+                                                           nrow = n_obs),
+                                         weight = rep(1, n_obs),
+                                         tmt = rep_len(0:1, n_obs),
+                                         learner = gbt,
+                                         test_method = "holdout")$perm_test$p_val
+                      })
+```
+
+```{r}
+p_values_cv <- sapply(1:100,
+                      function(x){
+                        analyze_features(random_seed = x,
+                                         features = matrix(rnorm(n_obs * 3),
+                                                           nrow = n_obs),
+                                         weight = rep(1, n_obs),
+                                         tmt = rep_len(0:1, n_obs),
+                                         learner = gbt,
+                                         test_method = "cv",
+                                         test_split = 3)$perm_test$p_val
+                      })
+```
+
+
+And they are:
+```{r}
+p_values_tb <- data.frame(iter = seq_along(p_values_ho),
+                          ho = p_values_ho,
+                          cv = p_values_cv)
+p_values_tb_tall <- tidyr::gather(p_values_tb, method, p, -iter)
+```
+
+
+```{r}
+hist(p_values_ho, breaks = seq(0,1,0.1))
+```
+
+```{r}
+plot(ecdf(p_values_ho))
+abline(0, 1)
+```
+

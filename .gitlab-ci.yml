@@ -1,0 +1,11 @@
+before_script:
+  - apt-get update
+  - apt-get install -y --no-install-recommends qpdf
+
+moxie-ci:
+  stage: test
+  image: rocker/tidyverse
+  script:
+    - R -e 'install.packages(c("future", "furrr"))'
+    - R -e 'devtools::install_gitlab("adviks/learners")'
+    - R -e 'devtools::check()'

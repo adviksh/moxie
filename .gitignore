@@ -1,0 +1,4 @@
+*.Rhistory
+.Rproj.user
+scratch.R
+inst/doc
