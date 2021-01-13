@@ -45,17 +45,30 @@ y   <- cbind(rnorm(n),
 
 tmt <- factor(tmt)
 
+# The main function in `moxie` is `analyze_features()`. 
+# It has three required arguments: features, tmt, and learner.
+# It asks: using `learner`, do `features` predict `tmt` better than we'd expect by chance?
+# See ?analyze_features for more details.
+
 # Check for balance
 # (if x on its own predicts tmt better than expected by chance)
-balance_test <- analyze_features(x = x,
+balance_test <- analyze_features(features = x,
                                  tmt = tmt,
                                  learner = moxie::binary_logistic,
                                  y = y)
 
-# Check for signal in outcomes
+# Check for signal
+# (if y predicts tmt better than expected by chance)
+signal_test <- analyze_features(features = y,
+                                tmt = tmt,
+                                learner = moxie::binary_logistic,
+                                y = y)
+
+# Check for marginal signal in outcomes
 # (if (x,y) predict tmt better than (x) predicts treatment)
-signal_test <- analyze_features(x = list(x_alone = x,
-                                         x_and_y = cbind(x, y)),
+# This method is slightly ad hoc, and needs more theoretical motivation
+signal_test <- analyze_features(features = list(x_alone = x,
+                                                x_and_y = cbind(x, y)),
                                 tmt = tmt,
                                 learner = moxie::binary_logistic,
                                 y = y)
