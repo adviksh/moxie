@@ -67,11 +67,11 @@ signal_test <- analyze_features(features = y,
 # Check for marginal signal in outcomes
 # (if (x,y) predict tmt better than (x) predicts treatment)
 # This method is slightly ad hoc, and needs more theoretical motivation
-signal_test <- analyze_features(features = list(x_alone = x,
-                                                x_and_y = cbind(x, y)),
-                                tmt = tmt,
-                                learner = moxie::binary_logistic,
-                                y = y)
+marginal_test <- analyze_features(features = list(x_alone = x,
+                                                  x_and_y = cbind(x, y)),
+                                  tmt = tmt,
+                                  learner = moxie::binary_logistic,
+                                  y = y)
 ```
 
 ## Notes
