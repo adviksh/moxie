@@ -12,7 +12,7 @@ This package implements methods described in [Machine-Learning Tests for Effects
 Make sure you have an up-to-date version of the `devtools` package. Then, open an R session and run the following commands:
 ```
 devtools::install_github("adviksh/learners")
-devtools::install_github("adviksh/moxie")
+devtools::install_github("adviksh/moxie", build_vignettes = TRUE)
 ```
 
 ### Option 2: Command Line
